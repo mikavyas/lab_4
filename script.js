@@ -1,14 +1,10 @@
 /*--------------------------------------------------------------------
-GGR472 LAB 4: Incorporating GIS Analysis into web maps using Turf.js 
---------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------
 Step 1: INITIALIZE MAP
 --------------------------------------------------------------------*/
-// Define access token
+// Access token 
 mapboxgl.accessToken = 'pk.eyJ1IjoibWlrYXZ5YXMiLCJhIjoiY2xoczhjcDR1MGZqMzNjcW1scm1paTRpNyJ9.yYDAti9jKKB23RGPg8SeRA'; //****ADD YOUR PUBLIC ACCESS TOKEN*****
 
-// Initialize map and edit to your preference
+// Initialize map 
 const map = new mapboxgl.Map({
     container: 'map', // container id in HTML
     style: 'mapbox://styles/mikavyas/clhsa4wxx00xt01pf6eb5by8x',  // ****ADD MAP STYLE HERE *****
@@ -19,99 +15,145 @@ const map = new mapboxgl.Map({
 /*--------------------------------------------------------------------
 Step 2: VIEW GEOJSON POINT DATA ON MAP
 --------------------------------------------------------------------*/
-// Create a map load event handler
+// Map load event handler
 map.on('load', function() {
-  let collisionData;
-  
-  // Fetch GeoJSON data from the online repository
-  fetch('https://raw.githubusercontent.com/mikavyas/lab_4_test/master/pedcyc_collision_06-21.geojson')
-    .then(response => response.json())
-    .then(data => {
-      // Store the fetched data in the collisionData variable
-      collisionData = data;
+    let collisionData;
+    
+    // Fetch GeoJSON data from online repository (raw)
+    fetch('https://raw.githubusercontent.com/mikavyas/lab_4/main/pedcyc_collision_06-21.geojson')
+        .then(response => response.json())
+        .then(data => {
+            // Store in collisionData variable
+            collisionData = data;
 
-      // Use Turf.js envelope method to create a bounding box around the collision point data
-      const bbox = turf.envelope(collisionData);
+            // Turf.js envelope method to create a bounding box around the collision point data
+            const bbox = turf.envelope(collisionData);
 
-      // Create a feature collection from the bounding box
-      const bboxFeature = turf.featureCollection([bbox]);
+            // Feature collection created from bounding box
+            const bboxFeature = turf.featureCollection([bbox]);
 
-      // View the bounding box on the map
-      map.addSource('bbox-source', {
-        type: 'geojson',
-        data: bboxFeature
-      });
+            // View bounding box on map
+            map.addSource('bbox-source', {
+                type: 'geojson',
+                data: bboxFeature
+            });
 
-      map.addLayer({
-        id: 'bbox-layer',
-        type: 'line',
-        source: 'bbox-source',
-        paint: {
-          'line-color': '#FF0000',
-          'line-width': 2
-        }
-      });
+            map.addLayer({
+                id: 'bbox-layer',
+                type: 'line',
+                source: 'bbox-source',
+                paint: {
+                    'line-color': '#FF0000',
+                    'line-width': 2
+                }
+            });
 
-      // Access the coordinates of the bounding box
-      const minX = bbox.geometry.coordinates[0][0][0];
-      const minY = bbox.geometry.coordinates[0][0][1];
-      const maxX = bbox.geometry.coordinates[0][2][0];
-      const maxY = bbox.geometry.coordinates[0][2][1];
+            // Access coordinates of bounding box
+            const minX = bbox.geometry.coordinates[0][0][0];
+            const minY = bbox.geometry.coordinates[0][0][1];
+            const maxX = bbox.geometry.coordinates[0][2][0];
+            const maxY = bbox.geometry.coordinates[0][2][1];
 
-      // Scale the bounding box by 10%
-      const scaleFactor = 1.1;
-      const scaledBbox = turf.transformScale(bbox, scaleFactor);
+            // Scale (bounding box) by 10%
+            const scaleFactor = 1.1;
+            const scaledBbox = turf.transformScale(bbox, scaleFactor);
 
-      // Create an array variable to store the scaled bounding box coordinates
-      const bboxCoords = [scaledBbox.geometry.coordinates[0][0][0], scaledBbox.geometry.coordinates[0][0][1], scaledBbox.geometry.coordinates[0][2][0], scaledBbox.geometry.coordinates[0][2][1]];
+            // Store scaled bounding box coordinates
+            const bboxCoords = [scaledBbox.geometry.coordinates[0][0][0], scaledBbox.geometry.coordinates[0][0][1], scaledBbox.geometry.coordinates[0][2][0], scaledBbox.geometry.coordinates[0][2][1]];
 
-      // Create a hexgrid inside the spatial limits of the scaled bounding box
-      const hexgrid = turf.hexGrid(bboxCoords, 0.5, { units: 'kilometers' });
+            // Create a hexgrid 
+            const hexgrid = turf.hexGrid(bboxCoords, 0.5, { units: 'kilometers' });
 
-      // View the hexgrid on the map
-      map.addSource('hexgrid-source', {
-        type: 'geojson',
-        data: hexgrid
-      });
+            // View hexgrid on map
+            map.addSource('hexgrid-source', {
+                type: 'geojson',
+                data: hexgrid
+            });
 
-      map.addLayer({
-        id: 'hexgrid-layer',
-        type: 'fill',
-        source: 'hexgrid-source',
-        paint: {
-          'fill-color': '#008000',
-          'fill-opacity': 0.5
-        }
-      });
-    })
-    .catch(error => console.error('Error fetching data:', error));
+            map.addLayer({
+                id: 'hexgrid-layer',
+                type: 'fill',
+                source: 'hexgrid-source',
+                paint: {
+                    // Update paint properties based on collision data range
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce',['get', 'COUNT'],-1],
+                        -1, '#cccccc',
+                        0, '#ffffff',  
+                        1, '#ff0000'   
+                    ],
+                    'fill-opacity': 0.7
+                }
+            });
+
+            /*--------------------------------------------------------------------
+            Step 4: AGGREGATE COLLISION DATA BY HEXGRID
+            --------------------------------------------------------------------*/
+            // Aggregate collision data by hexgrid using Turf collect method
+            const collishex = turf.collect(hexgrid, collisionData, '_id', 'values');
+
+            // Initialize variable to store maximum collision count
+            let maxcollis = 0;
+
+            // Iterate through features to add point (COUNT) and identify maximum number of collisions
+            collishex.features.forEach((feature) => {
+                // Add point (COUNT) to each hexagon
+                feature.properties.COUNT = feature.properties.values.length;
+
+                // Identify maximum number of collisions
+                if (feature.properties.COUNT > maxcollis) {
+                    maxcollis = feature.properties.COUNT;
+                }
+            });
+
+            // Log the maximum collision count
+            console.log('Maximum collision count:', maxcollis);
+
+            /*--------------------------------------------------------------------
+            Step 5: LEGEND
+            --------------------------------------------------------------------*/
+            // Legend
+            const legend = document.createElement('div');
+            legend.innerHTML = `
+                <h4>Collision Data Legend</h4>
+                <div><span style="background-color: #ffffff;"></span>No Collisions</div>
+                <div><span style="background-color: #ff0000;"></span>Maximum Collisions</div>
+            `;
+            legend.style.padding = '10px';
+            legend.style.backgroundColor = '#ffffff';
+            legend.style.borderRadius = '5px';
+            legend.style.position = 'absolute';
+            legend.style.top = '10px';
+            legend.style.left = '10px';
+            legend.style.zIndex = '1';
+            map.getContainer().appendChild(legend);
+
+            /*--------------------------------------------------------------------
+            Step 6: FUNCTIONALITY
+            --------------------------------------------------------------------*/
+            // Pop-up windows for each hexagon
+            map.on('click', 'hexgrid-layer', function(e) {
+                const features = map.queryRenderedFeatures(e.point, { layers: ['hexgrid-layer'] });
+                const feature = features[0];
+
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`<h3>Collision Count: ${feature.properties.COUNT}</h3>`)
+                    .addTo(map);
+            });
+
+            // Edit cursor 
+            map.on('mouseenter', 'hexgrid-layer', function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+
+            // Change cursor back to default when not in hover 
+            map.on('mouseleave', 'hexgrid-layer', function() {
+                map.getCanvas().style.cursor = '';
+            });
+        })
+        .catch(error => console.error('Error fetching data:', error));
 });
-/*--------------------------------------------------------------------
-    Step 3: CREATE BOUNDING BOX AND HEXGRID
---------------------------------------------------------------------*/
-//HINT: All code to create and view the hexgrid will go inside a map load event handler
-//      First create a bounding box around the collision point data then store as a feature collection variable
-//      Access and store the bounding box coordinates as an array variable
-//      Use bounding box coordinates as argument in the turf hexgrid function
-
-
-
-/*--------------------------------------------------------------------
-Step 4: AGGREGATE COLLISIONS BY HEXGRID
---------------------------------------------------------------------*/
-//HINT: Use Turf collect function to collect all '_id' properties from the collision points data for each heaxagon
-//      View the collect output in the console. Where there are no intersecting points in polygons, arrays will be empty
-
-
-
-// /*--------------------------------------------------------------------
-// Step 5: FINALIZE YOUR WEB MAP
-// --------------------------------------------------------------------*/
-//HINT: Think about the display of your data and usability of your web map.
-//      Update the addlayer paint properties for your hexgrid using:
-//        - an expression
-//        - The COUNT attribute
-//        - The maximum number of collisions found in a hexagon
-//      Add a legend and additional functionality including pop-up windows
-
 
