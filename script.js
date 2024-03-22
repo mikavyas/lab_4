@@ -16,17 +16,76 @@ const map = new mapboxgl.Map({
     zoom: 12 // starting zoom level
 });
 
-
-
 /*--------------------------------------------------------------------
 Step 2: VIEW GEOJSON POINT DATA ON MAP
 --------------------------------------------------------------------*/
-//HINT: Create an empty variable
-//      Use the fetch method to access the GeoJSON from your online repository
-//      Convert the response to JSON format and then store the response in your new variable
+// Create a map load event handler
+map.on('load', function() {
+  let collisionData;
+  
+  // Fetch GeoJSON data from the online repository
+  fetch('https://raw.githubusercontent.com/mikavyas/lab_4_test/master/pedcyc_collision_06-21.geojson')
+    .then(response => response.json())
+    .then(data => {
+      // Store the fetched data in the collisionData variable
+      collisionData = data;
 
+      // Use Turf.js envelope method to create a bounding box around the collision point data
+      const bbox = turf.envelope(collisionData);
 
+      // Create a feature collection from the bounding box
+      const bboxFeature = turf.featureCollection([bbox]);
 
+      // View the bounding box on the map
+      map.addSource('bbox-source', {
+        type: 'geojson',
+        data: bboxFeature
+      });
+
+      map.addLayer({
+        id: 'bbox-layer',
+        type: 'line',
+        source: 'bbox-source',
+        paint: {
+          'line-color': '#FF0000',
+          'line-width': 2
+        }
+      });
+
+      // Access the coordinates of the bounding box
+      const minX = bbox.geometry.coordinates[0][0][0];
+      const minY = bbox.geometry.coordinates[0][0][1];
+      const maxX = bbox.geometry.coordinates[0][2][0];
+      const maxY = bbox.geometry.coordinates[0][2][1];
+
+      // Scale the bounding box by 10%
+      const scaleFactor = 1.1;
+      const scaledBbox = turf.transformScale(bbox, scaleFactor);
+
+      // Create an array variable to store the scaled bounding box coordinates
+      const bboxCoords = [scaledBbox.geometry.coordinates[0][0][0], scaledBbox.geometry.coordinates[0][0][1], scaledBbox.geometry.coordinates[0][2][0], scaledBbox.geometry.coordinates[0][2][1]];
+
+      // Create a hexgrid inside the spatial limits of the scaled bounding box
+      const hexgrid = turf.hexGrid(bboxCoords, 0.5, { units: 'kilometers' });
+
+      // View the hexgrid on the map
+      map.addSource('hexgrid-source', {
+        type: 'geojson',
+        data: hexgrid
+      });
+
+      map.addLayer({
+        id: 'hexgrid-layer',
+        type: 'fill',
+        source: 'hexgrid-source',
+        paint: {
+          'fill-color': '#008000',
+          'fill-opacity': 0.5
+        }
+      });
+    })
+    .catch(error => console.error('Error fetching data:', error));
+});
 /*--------------------------------------------------------------------
     Step 3: CREATE BOUNDING BOX AND HEXGRID
 --------------------------------------------------------------------*/
